@@ -6,7 +6,7 @@ import pickle
 
 
 def run_con():
-    image_dir = "E:\\PythonBasics\\pythonProject\\face-test-11\\images"
+    image_dir = r'E:\PythonBasics\pythonProject\face-test-11\images'
     face_cascade = cv2.CascadeClassifier('cascades/data/haarcascade_frontalface_alt2.xml')
 
     recognizer = cv2.face.LBPHFaceRecognizer_create()
@@ -39,5 +39,3 @@ def run_con():
         pickle.dump(label_ids, f)
     recognizer.train(x_train, np.array(y_labels))
     recognizer.save('trainer.yml')
-
-
