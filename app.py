@@ -1,12 +1,19 @@
+import json
 import os
 import time
-from flask import Flask, render_template, Response, request, jsonify, redirect
+from datetime import date
+
+from flask import Flask, render_template, Response, request, jsonify, redirect, session
 import cv2
 from PIL import Image
 import numpy as np
 import pickle
+import requests
+from passlib.hash import sha512_crypt
+from requests.auth import HTTPBasicAuth
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'abcd'
 
 camera = cv2.VideoCapture(0)
 
@@ -26,7 +33,7 @@ def gen_frames():
 def take_photo(name):
     gen_frames()
     os.makedirs('images/' + name)
-    for i in range(5):
+    for i in range(10):
         time.sleep(1)
         return_value, image = camera.read()
 
@@ -37,13 +44,35 @@ def take_photo(name):
 def register():
     if request.method == 'POST':
         butt = request.form.get('but')
-        username = request.form.get('username')
+        fname = request.form.get('fname')
+        dob = request.form.get('dob')
+        a = dob.split('-')
+        age = calculateAge(date(int(a[0]), int(a[1]), int(a[2])))
+        gender = 'M' if request.form.get('gender') == "Male" else 'F'
+        mnumber = request.form.get('mnumber')
+        password = request.form.get('password')
         if butt == 'Click Me':
-            take_photo(username)
-            camera.release()
-            cv2.destroyAllWindows()
-            train_face()
-            return redirect('login')
+            take_photo(fname)
+            paras = {
+                "name": fname,
+                "age": age,
+                "gender": gender,
+                "password": sha512_crypt.encrypt(password),
+                "mobile": mnumber,
+            }
+            print(json.dumps(paras, indent=4))
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "*/*"
+            }
+            response = requests.post(url="http://127.0.0.1:8000/users/", data=json.dumps(paras, indent=4),
+                                     headers=headers,
+                                     auth=HTTPBasicAuth('Raj', 'RajRaj@7'))
+            if response.status_code.__eq__(201):
+                train_face()
+                return redirect('landing_page')
+            else:
+                print("Something went wrong")
 
             # face_recog.run_con()
 
@@ -64,20 +93,36 @@ def video_feed():
 def login():
     if request.method == 'POST':
         butt = request.form.get('but')
-        username = request.form.get('username')
+        fname = request.form.get('fname')
+        anumber = request.form.get('anumber')
+        password = request.form.get('password')
         if butt == 'Click Me':
-            if check_face(username):
-                return redirect('content')
+            if is_verified(fname, anumber, password):
+                session['fname'] = fname
+                return redirect('face_login')
     return render_template('login.html')
 
 
-@app.route("/")
+@app.route("/face_login", methods=['GET', 'POST'])
+def face_login():
+    if request.method == 'POST':
+        butt = request.form.get('but')
+        if butt == 'Click Me':
+            fname = session.get('fname', None)
+            if check_face(fname):
+                return redirect('content')
+            else:
+                print('Not Matched')
+    return render_template('face_login.html')
+
+
+@app.route("/health")
 def health():
     return jsonify(status='UP')
 
 
 def train_face():
-    image_dir = r'E:\PythonBasics\pythonProject\face-test-11\images'
+    image_dir = r'E:\PythonBasics\pythonProject\face-test-11-new-16-mar\images'
     face_cascade = cv2.CascadeClassifier('face_recog/cascades/data/haarcascade_frontalface_alt2.xml')
 
     recognizer = cv2.face.LBPHFaceRecognizer_create()
@@ -100,27 +145,27 @@ def train_face():
                 id_ = label_ids[label]
                 pil_image = Image.open(path).convert("L")  # grayscale
                 image_array = np.array(pil_image, "uint8")
-                faces = face_cascade.detectMultiScale(image_array, minNeighbors=5)
+                faces = face_cascade.detectMultiScale(image_array, minNeighbors=7)
 
                 for x, y, w, h in faces:
                     roi = image_array[y:y + h, x:x + w]
                     x_train.append(roi)
                     y_labels.append(id_)
-    with open("dumps/labels.pickle", 'wb') as f:
+    with open("labels.pickle", 'wb') as f:
         pickle.dump(label_ids, f)
     recognizer.train(x_train, np.array(y_labels))
-    recognizer.save('dumps/trainer.yml')
+    recognizer.save('trainer.yml')
 
 
 def check_face(username):
     face_cascade = cv2.CascadeClassifier('face_recog/cascades/data/haarcascade_frontalface_alt2.xml')
     recognizer = cv2.face.LBPHFaceRecognizer_create()
-    recognizer.read('dumps/trainer.yml')
+    recognizer.read('trainer.yml')
     labels = {}
-    with open("dumps/labels.pickle", 'rb') as f:
+    with open("labels.pickle", 'rb') as f:
         og_labels = pickle.load(f)
         labels = {v: k for k, v in og_labels.items()}
-
+    gen_frames()
     ret, frame = camera.read()
     gray_img = cv2.cvtColor(frame, cv2.COLOR_BGRA2GRAY)
     faces = face_cascade.detectMultiScale(gray_img, minNeighbors=5)
@@ -128,11 +173,11 @@ def check_face(username):
         roi_gray = gray_img[y:y + h, x:x + w]
 
         id_, conf = recognizer.predict(roi_gray)
-        if 45 <= conf <= 85:
+        if 27 <= conf <= 85:
             print(conf)
             print(id_)
             print(labels[id_])
-            if username.__eq__(labels[id_]):
+            if string_format(username).__eq__(labels[id_]):
                 return True
         img_item = 'my-image.png'
         cv2.imwrite(img_item, roi_gray)
@@ -145,6 +190,37 @@ def check_face(username):
         cv2.imshow('frame', frame)
         if cv2.waitKey(20) & 0xFF == ord('q'):
             break
+
+
+@app.route('/')
+@app.route("/landing_page")
+def landing_page():
+    return render_template('landingPage.html')
+
+
+def calculateAge(birthDate):
+    today = date.today()
+    age = today.year - birthDate.year - ((today.month, today.day) < (birthDate.month, birthDate.day))
+    return age
+
+
+def string_format(name):
+    return name.replace(" ", "-").lower()
+
+
+def is_verified(fname, anumber, password):
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "*/*"
+    }
+    response = requests.get(url=f'http://127.0.0.1:8000/users/{anumber}',
+                            headers=headers,
+                            auth=HTTPBasicAuth('Raj', 'RajRaj@7'))
+    res_body = response.json()
+    if res_body['name'] == fname and sha512_crypt.verify(password,res_body['password']):
+        return True
+    else:
+        return False
 
 
 if __name__ == "__main__":
