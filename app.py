@@ -11,6 +11,7 @@ import pickle
 import requests
 from passlib.hash import sha512_crypt
 from requests.auth import HTTPBasicAuth
+from datalayer import update_by_account_number, retrieve_by_account_number
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'abcd'
@@ -81,6 +82,7 @@ def register():
 
 @app.route("/content")
 def content():
+    anumber = session.get('anumber', None)
     headers = {
         "Content-Type": "application/json",
         "Accept": "*/*"
@@ -95,7 +97,21 @@ def content():
         "id": res_body['id'],
         "mobile": res_body['mobile']
     }
+
+    if request.method == 'POST':
+        amount = request.form.get('tobe')
+        butt = request.form.get('but')
+        if butt == 'but-withdraw':
+            data = retrieve_by_account_number(anumber)
+            print(data)
+
     return render_template('content.html', content=content)
+
+
+@app.route('/profile-balance')
+def withdraw():
+    anumber = session.get('anumber', None)
+    update_by_account_number()
 
 
 @app.route("/video_feed")
@@ -113,6 +129,7 @@ def login():
         if butt == 'Click Me':
             if is_verified(fname, anumber, password):
                 session['fname'] = fname
+                session['anumber'] = anumber
                 return redirect('face_login')
     return render_template('login.html')
 
@@ -231,7 +248,7 @@ def is_verified(fname, anumber, password):
                             headers=headers,
                             auth=HTTPBasicAuth('Raj', 'RajRaj@7'))
     res_body = response.json()
-    if res_body['name'] == fname and sha512_crypt.verify(password,res_body['password']):
+    if res_body['name'] == fname and sha512_crypt.verify(password, res_body['password']):
         return True
     else:
         return False
