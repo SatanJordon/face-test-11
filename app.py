@@ -81,7 +81,21 @@ def register():
 
 @app.route("/content")
 def content():
-    return render_template('content.html')
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "*/*"
+    }
+    response = requests.get(url=f'http://127.0.0.1:8000/users/{anumber}',
+                            headers=headers,
+                            auth=HTTPBasicAuth('Raj', 'RajRaj@7'))
+    res_body = response.json()
+
+    content = {
+        "name": res_body['name'],
+        "id": res_body['id'],
+        "mobile": res_body['mobile']
+    }
+    return render_template('content.html', content=content)
 
 
 @app.route("/video_feed")
